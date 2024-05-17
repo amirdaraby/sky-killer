@@ -1,0 +1,6 @@
+# IDE
+.idea
+.vscode
+
+# go build files
+sky-killer
