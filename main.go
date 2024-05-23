@@ -17,10 +17,11 @@ import (
 // y -> line (row)
 
 type World struct {
-	ScreenX, ScreenY int
-	PlayerX, PlayerY int
-	Map              [][2]int
-	MapCharacter     string
+	ScreenX, ScreenY   int
+	PlayerX, PlayerY   int
+	Map                [][2]int
+	MapCharacter       string
+	NextStart, NextEnd int
 }
 
 func main() {
@@ -42,6 +43,8 @@ func main() {
 		PlayerY:      screenY - 1,
 		Map:          make([][2]int, screenY),
 		MapCharacter: " ",
+		NextStart:    screenX/2 - 20,
+		NextEnd:      screenX/2 + 20,
 	}
 
 	for i := range world.Map {
@@ -68,8 +71,6 @@ func main() {
 	tm.Flush()
 
 	cursor.Show()
-
-	fmt.Printf("%+v", world.Map)
 }
 
 func draw(world *World) {
@@ -86,7 +87,7 @@ func draw(world *World) {
 	}
 
 	// draw player
-	player := tm.Background("P", tm.RED)
+	player := tm.Background(" ", tm.RED)
 
 	player = tm.MoveTo(player, world.PlayerX, world.PlayerY)
 
@@ -105,12 +106,43 @@ func physics(world *World, gameRunning *bool) {
 
 	}
 
-	//shift the map
+	// shift the map
 	for i := len(world.Map) - 2; i >= 0; i-- {
 		world.Map[i+1] = world.Map[i]
 	}
 
-	world.Map[0] = [2]int{((world.ScreenX / 2) - randRange(4, 10)), ((world.ScreenX / 2) + randRange(4, 15))}
+	// randomize map
+	if world.NextEnd < world.Map[0][1] {
+		world.Map[0][1] -= 1
+	}
+
+	if world.NextEnd > world.Map[0][1] {
+		world.Map[0][1] += 1
+	}
+
+	if world.NextStart < world.Map[0][0] {
+		world.Map[0][0] -= 1
+	}
+
+	if world.NextStart > world.Map[0][0] {
+		world.Map[0][0] += 1
+	}
+
+	if world.NextStart == world.Map[0][0] && world.NextEnd == world.Map[0][1] {
+
+		if randRange(0, 4) == 1 {
+
+			world.NextStart = randRange(world.ScreenX/2-(world.ScreenX/6), randRange(world.ScreenX/2-(world.ScreenX/6), world.ScreenX-10))
+			world.NextEnd = randRange(world.NextStart, world.ScreenX-10)
+
+			if world.NextEnd-world.NextStart <= 15 {
+				world.NextStart -= 15
+			}
+
+		}
+
+	}
+
 }
 
 func listenPlayerMovement(world *World, gameRunning *bool, screeSize ts.Size) {
@@ -128,7 +160,7 @@ func listenPlayerMovement(world *World, gameRunning *bool, screeSize ts.Size) {
 
 		}
 
-		if key.Code == keys.Up && world.PlayerY > 2 {
+		if key.Code == keys.Up && world.PlayerY > 2 && world.PlayerY >= world.ScreenY/2 {
 
 			world.PlayerY -= 1
 
@@ -149,5 +181,14 @@ func listenPlayerMovement(world *World, gameRunning *bool, screeSize ts.Size) {
 }
 
 func randRange(min, max int) int {
+
+	defer recoverIntn(min, max)
+
 	return rand.Intn(max-min) + min
+}
+
+func recoverIntn(min, max int) {
+	if r := recover(); r != nil {
+		fmt.Printf("min: %d \nmax: %d", min, max)
+	}
 }
