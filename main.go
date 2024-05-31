@@ -100,7 +100,7 @@ func draw(world *World) {
 	}
 
 	for i := 0; i < len(world.Bullets); i++ {
-		tm.Print(tm.MoveTo(tm.Color("|", tm.BLACK), world.Bullets[i].X, world.Bullets[i].Y))
+		tm.Print(tm.MoveTo(tm.Background("|", tm.CYAN), world.Bullets[i].X, world.Bullets[i].Y))
 	}
 
 	// draw player
@@ -121,6 +121,14 @@ func physics(world *World, gameRunning *bool) {
 			*gameRunning = false
 		}
 
+		for j := 0; j < len(world.Bullets); j++ {
+
+			if (world.Map[i][0] >= world.Bullets[j].X || world.Map[i][1] <= world.Bullets[j].X) && world.Bullets[j].Y == i {
+				world.Bullets = append(world.Bullets[:j], world.Bullets[j+1:]...)
+			}
+
+		}
+
 	}
 
 	for i := 0; i < len(world.Bullets); i++ {
@@ -131,10 +139,12 @@ func physics(world *World, gameRunning *bool) {
 
 		if world.Bullets[i].Y >= world.PlayerY && world.Bullets[i].X == world.PlayerX {
 			*gameRunning = false
+			continue
 		}
 
 		if world.Bullets[i].ShotBy == ShotByPlayer {
 			world.Bullets[i].Y--
+			continue
 		}
 
 		if world.Bullets[i].ShotBy == ShotByEnemy {
@@ -168,7 +178,7 @@ func physics(world *World, gameRunning *bool) {
 
 		if randRange(0, 4) == 1 {
 
-			world.NextStart = randRange(world.ScreenX/2-(world.ScreenX/6), randRange(world.ScreenX/2-(world.ScreenX/6), world.ScreenX-10))
+			world.NextStart = randRange(world.ScreenX/2-(world.ScreenX/6), randRange(world.ScreenX/2-(world.ScreenX/6)+1, world.ScreenX-10))
 			world.NextEnd = randRange(world.NextStart, world.ScreenX-10)
 
 			if world.NextEnd-world.NextStart <= 15 {
@@ -185,7 +195,7 @@ func listenPlayerMovement(world *World, gameRunning *bool, screeSize ts.Size) {
 	keyboard.Listen(func(key keys.Key) (stop bool, err error) {
 
 		if key.Code == keys.Space {
-			world.Bullets = append(world.Bullets, Bullet{X: world.PlayerX, Y: world.PlayerY - 1, GoingToY: world.PlayerY - 10, ShotBy: ShotByPlayer})
+			world.Bullets = append(world.Bullets, Bullet{X: world.PlayerX, Y: world.PlayerY - 1, GoingToY: 0, ShotBy: ShotByPlayer})
 		}
 
 		if key.Code == keys.Right && world.PlayerX < screeSize.Width-2 {
