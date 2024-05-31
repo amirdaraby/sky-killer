@@ -22,7 +22,19 @@ type World struct {
 	Map                [][2]int
 	MapCharacter       string
 	NextStart, NextEnd int
+	Bullets            []Bullet
 }
+
+type Bullet struct {
+	X, Y     int
+	GoingToY int
+	ShotBy   string
+}
+
+const (
+	ShotByPlayer = "shot_by_player"
+	ShotByEnemy  = "shot_by_enemy"
+)
 
 func main() {
 	// initialize
@@ -84,6 +96,11 @@ func draw(world *World) {
 		// draw river edge
 		tm.Print(tm.MoveTo(tm.Background(strings.Repeat(world.MapCharacter, world.Map[i][0]), tm.GREEN), 0, i))
 		tm.Print(tm.MoveTo(tm.Background(strings.Repeat(world.MapCharacter, world.ScreenX-world.Map[i][1]), tm.GREEN), world.Map[i][1], i))
+
+	}
+
+	for i := 0; i < len(world.Bullets); i++ {
+		tm.Print(tm.MoveTo(tm.Color("|", tm.BLACK), world.Bullets[i].X, world.Bullets[i].Y))
 	}
 
 	// draw player
@@ -104,6 +121,25 @@ func physics(world *World, gameRunning *bool) {
 			*gameRunning = false
 		}
 
+	}
+
+	for i := 0; i < len(world.Bullets); i++ {
+		if world.Bullets[i].Y == world.Bullets[i].GoingToY {
+			world.Bullets = append(world.Bullets[:i], world.Bullets[i+1:]...)
+			continue
+		}
+
+		if world.Bullets[i].Y >= world.PlayerY && world.Bullets[i].X == world.PlayerX {
+			*gameRunning = false
+		}
+
+		if world.Bullets[i].ShotBy == ShotByPlayer {
+			world.Bullets[i].Y--
+		}
+
+		if world.Bullets[i].ShotBy == ShotByEnemy {
+			world.Bullets[i].Y++
+		}
 	}
 
 	// shift the map
@@ -148,6 +184,10 @@ func physics(world *World, gameRunning *bool) {
 func listenPlayerMovement(world *World, gameRunning *bool, screeSize ts.Size) {
 	keyboard.Listen(func(key keys.Key) (stop bool, err error) {
 
+		if key.Code == keys.Space {
+			world.Bullets = append(world.Bullets, Bullet{X: world.PlayerX, Y: world.PlayerY - 1, GoingToY: world.PlayerY - 10, ShotBy: ShotByPlayer})
+		}
+
 		if key.Code == keys.Right && world.PlayerX < screeSize.Width-2 {
 
 			world.PlayerX += 1
@@ -189,6 +229,6 @@ func randRange(min, max int) int {
 
 func recoverIntn(min, max int) {
 	if r := recover(); r != nil {
-		fmt.Printf("min: %d \nmax: %d", min, max)
+		panic(fmt.Sprintf("min: %d \nmax: %d", min, max))
 	}
 }
