@@ -9,6 +9,7 @@ import (
 	"atomicgo.dev/cursor"
 	"atomicgo.dev/keyboard"
 	"atomicgo.dev/keyboard/keys"
+	"github.com/amirdaraby/sky-killer/internal/npc"
 	tm "github.com/buger/goterm"
 	ts "github.com/kopoli/go-terminal-size"
 )
@@ -17,18 +18,24 @@ import (
 // y -> line (row)
 
 type World struct {
+	Enemies            npc.Enemies
 	ScreenX, ScreenY   int
-	PlayerX, PlayerY   int
+	Player             *Player
 	Map                [][2]int
 	MapCharacter       string
 	NextStart, NextEnd int
 	Bullets            []Bullet
+	MaxEnemyInScreen   int
 }
 
 type Bullet struct {
 	X, Y     int
 	GoingToY int
 	ShotBy   string
+}
+
+type Player struct {
+	X, Y int
 }
 
 const (
@@ -49,14 +56,17 @@ func main() {
 	var screenY int = screenSize.Height
 
 	world := World{
-		ScreenX:      screenX,
-		ScreenY:      screenY,
-		PlayerX:      screenX / 2,
-		PlayerY:      screenY - 1,
-		Map:          make([][2]int, screenY),
-		MapCharacter: " ",
-		NextStart:    screenX/2 - 20,
-		NextEnd:      screenX/2 + 20,
+		ScreenX: screenX,
+		ScreenY: screenY,
+		Player: &Player{
+			X: screenX / 2,
+			Y: screenY - 1,
+		},
+		Map:              make([][2]int, screenY),
+		MapCharacter:     " ",
+		NextStart:        screenX/2 - 20,
+		NextEnd:          screenX/2 + 20,
+		MaxEnemyInScreen: 5,
 	}
 
 	for i := range world.Map {
@@ -106,9 +116,18 @@ func draw(world *World) {
 	// draw player
 	player := tm.Background(" ", tm.RED)
 
-	player = tm.MoveTo(player, world.PlayerX, world.PlayerY)
+	player = tm.MoveTo(player, world.Player.X, world.Player.Y)
 
 	tm.Print(player)
+
+	// draw enemies
+	for i := 0; i < len(world.Enemies.Units); i++ {
+		enemy := tm.Background(" ", tm.BLACK)
+
+		enemy = tm.MoveTo(enemy, world.Enemies.Units[i].X(), world.Enemies.Units[i].Y())
+
+		tm.Print(enemy)
+	}
 
 	tm.Flush()
 }
@@ -117,7 +136,7 @@ func physics(world *World, gameRunning *bool) {
 
 	for i := 0; i < len(world.Map); i++ {
 
-		if (world.Map[i][0] >= world.PlayerX || world.Map[i][1] <= world.PlayerX) && world.PlayerY == i {
+		if (world.Map[i][0] >= world.Player.X || world.Map[i][1] <= world.Player.X) && world.Player.Y == i {
 			*gameRunning = false
 		}
 
@@ -132,23 +151,30 @@ func physics(world *World, gameRunning *bool) {
 	}
 
 	for i := 0; i < len(world.Bullets); i++ {
-		if world.Bullets[i].Y == world.Bullets[i].GoingToY {
+
+		for j := 0; j < len(world.Enemies.Units); j++ {
+			if (world.Bullets[i].Y == world.Enemies.Units[j].Y() || world.Bullets[i].Y == world.Enemies.Units[j].Y()+1) && world.Bullets[i].X == world.Enemies.Units[j].X() {
+				world.Enemies.Units = append(world.Enemies.Units[:j], world.Enemies.Units[j+1:]...)
+				world.Bullets = append(world.Bullets[:i], world.Bullets[i+1:]...)
+				continue
+			}
+		}
+
+		if world.Bullets[i].Y == world.Bullets[i].GoingToY || world.Bullets[i].Y >= world.ScreenY || world.Bullets[i].Y <= 1 {
 			world.Bullets = append(world.Bullets[:i], world.Bullets[i+1:]...)
 			continue
 		}
 
-		if world.Bullets[i].Y >= world.PlayerY && world.Bullets[i].X == world.PlayerX {
+		if (world.Bullets[i].Y == world.Player.Y || world.Bullets[i].Y == world.Player.Y+1) && world.Bullets[i].X == world.Player.X {
 			*gameRunning = false
-			continue
+			break
 		}
 
 		if world.Bullets[i].ShotBy == ShotByPlayer {
-			world.Bullets[i].Y--
+			world.Bullets[i].Y -= 2
 			continue
-		}
-
-		if world.Bullets[i].ShotBy == ShotByEnemy {
-			world.Bullets[i].Y++
+		} else {
+			world.Bullets[i].Y += 2
 		}
 	}
 
@@ -189,36 +215,63 @@ func physics(world *World, gameRunning *bool) {
 
 	}
 
+	// spawn enemies and move them ?
+	for i := 0; i < len(world.Enemies.Units); i++ {
+
+		if world.Enemies.Units[i].Y() >= world.ScreenY-1 {
+			world.Enemies.Units = append(world.Enemies.Units[i:], world.Enemies.Units[i+1:]...)
+			continue
+		}
+
+		if world.Enemies.ShootsFired <= 30 {
+			if randRange(0, 20) == 5 {
+				world.Bullets = append(world.Bullets, Bullet{X: world.Enemies.Units[i].X(), Y: world.Enemies.Units[i].Y() + 4, GoingToY: world.ScreenY, ShotBy: ShotByEnemy})
+				world.Enemies.ShootsFired++
+			}
+		}
+
+		world.Enemies.Units[i].StepDown()
+	}
+
+	if randRange(0, 10) == 2 {
+
+		if len(world.Enemies.Units) <= world.MaxEnemyInScreen {
+			NewEnemy := npc.NewNormalEnemy(randRange(world.Map[0][0], world.Map[0][1]), 1)
+
+			world.Enemies.Units = append(world.Enemies.Units, NewEnemy)
+		}
+	}
+
 }
 
 func listenPlayerMovement(world *World, gameRunning *bool, screeSize ts.Size) {
 	keyboard.Listen(func(key keys.Key) (stop bool, err error) {
 
 		if key.Code == keys.Space {
-			world.Bullets = append(world.Bullets, Bullet{X: world.PlayerX, Y: world.PlayerY - 1, GoingToY: 0, ShotBy: ShotByPlayer})
+			world.Bullets = append(world.Bullets, Bullet{X: world.Player.X, Y: world.Player.Y - 1, GoingToY: 0, ShotBy: ShotByPlayer})
 		}
 
-		if key.Code == keys.Right && world.PlayerX < screeSize.Width-2 {
+		if key.Code == keys.Right && world.Player.X < screeSize.Width-2 {
 
-			world.PlayerX += 1
-
-		}
-
-		if key.Code == keys.Left && world.PlayerX > 2 {
-
-			world.PlayerX -= 1
+			world.Player.X += 1
 
 		}
 
-		if key.Code == keys.Up && world.PlayerY > 2 && world.PlayerY >= world.ScreenY/2 {
+		if key.Code == keys.Left && world.Player.X > 2 {
 
-			world.PlayerY -= 1
+			world.Player.X -= 1
 
 		}
 
-		if key.Code == keys.Down && world.PlayerY < screeSize.Height-2 {
+		if key.Code == keys.Up && world.Player.Y > 2 && world.Player.Y >= world.ScreenY/2 {
 
-			world.PlayerY += 1
+			world.Player.Y -= 1
+
+		}
+
+		if key.Code == keys.Down && world.Player.Y < screeSize.Height-2 {
+
+			world.Player.Y += 1
 
 		}
 
